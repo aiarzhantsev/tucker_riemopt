@@ -28,21 +28,13 @@ class Test(TestCase):
             A = T.full()
             return (A ** 2 - A).sum()
 
-        @jax.jit
-        def g(T1, core, factors):
-            new_factors = [jnp.concatenate([T1.factors[i], factors[i]], axis=1) for i in range(T1.ndim)]
-            new_core = group_cores(core, T1.core)
-
-            T = Tucker(new_core, new_factors)
-            return f(T)
-
         full_grad = jax.grad(f_full, argnums=0)
 
         A = np.random.random((4, 4, 4))
         T = Tucker.full2tuck(A)
 
         eucl_grad = full_grad(T.full())
-        riem_grad = compute_gradient_projection(T, g)
+        riem_grad = compute_gradient_projection(T, f)
 
         assert(np.allclose(eucl_grad, riem_grad.full()))
 
@@ -58,21 +50,10 @@ class Test(TestCase):
         def f(T):
             return (T.flat_inner(A @ T)) / T.flat_inner(T)
 
-        @jax.jit
-        def g(T1, core, factors):
-            d = T1.ndim
-            r = T1.rank
-
-            new_factors = [jnp.concatenate([T1.factors[i], factors[i]], axis=1) for i in range(T1.ndim)]
-            new_core = group_cores(core, T1.core)
-
-            T = Tucker(new_core, new_factors)
-            return f(T)
-
         x = np.random.random(4)
         X = Tucker.full2tuck(x.reshape([2] * 2))
 
-        X, _ = optimize(f, g, X, maxiter=100)
+        X, _ = optimize(f, X, maxiter=100)
         x = X.full().reshape(4)
         A = A.full().reshape((4, 4))
 

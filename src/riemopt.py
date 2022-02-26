@@ -9,7 +9,7 @@ from src.tucker import Tucker
 import numpy as np
 import jax.numpy as jnp
 
-
+@jax.jit
 def group_cores(core1, core2):
     d = len(core1.shape)
     r = core1.shape
@@ -24,7 +24,7 @@ def group_cores(core1, core2):
     return new_core
 
 
-def compute_gradient_projection(T, g):
+def compute_gradient_projection(T, f, g=None, dg_dS=None, dg_dU=None):
     """
     Input
         X: tensor from manifold
@@ -32,8 +32,21 @@ def compute_gradient_projection(T, g):
      Output
         proj: projections of gradient onto the tangent space
     """
-    dg_dS = jax.grad(g, argnums=1)
-    dg_dU = jax.grad(g, argnums=2)
+
+    if g is None:
+        @jax.jit
+        def g(T1, core, factors):
+            new_factors = [jnp.concatenate([T1.factors[i], factors[i]], axis=1) for i in range(T1.ndim)]
+            new_core = group_cores(core, T1.core)
+
+            T = Tucker(new_core, new_factors)
+            return f(T)
+
+    if dg_dS is None:
+        dg_dS = jax.grad(g, argnums=1)
+
+    if dg_dU is None:
+        dg_dU = jax.grad(g, argnums=2)
 
     dS = dg_dS(T, T.core, [jnp.zeros_like(T.factors[i]) for i in range(T.ndim)])
     dU = dg_dU(T, T.core, [jnp.zeros_like(T.factors[i]) for i in range(T.ndim)])
@@ -41,7 +54,7 @@ def compute_gradient_projection(T, g):
     return Tucker(group_cores(dS, T.core), [jnp.concatenate([T.factors[i], dU[i]], axis=1) for i in range(T.ndim)])
 
 
-def optimize(f, g, X0, maxiter=10):
+def optimize(f, X0, maxiter=10):
     """
     Input
         f: function to maximize
@@ -57,10 +70,21 @@ def optimize(f, g, X0, maxiter=10):
 
     errs = []
     errs.append(f(X))
+
+    @jax.jit
+    def g(T1, core, factors):
+        new_factors = [jnp.concatenate([T1.factors[i], factors[i]], axis=1) for i in range(T1.ndim)]
+        new_core = group_cores(core, T1.core)
+
+        T = Tucker(new_core, new_factors)
+        return f(T)
+
+    dg_dS = jax.grad(g, argnums=1)
+    dg_dU = jax.grad(g, argnums=2)
     
     for i in range(maxiter):
         print(f'Doing iteration {i+1}/{maxiter}\t Calculating gradient...\t', end='\r')
-        G = compute_gradient_projection(X, g)
+        G = compute_gradient_projection(X, f, g, dg_dS, dg_dU)
         print(f'Doing itaration {i+1}/{maxiter}\t Calculating tau...\t\t', end='\r')
         tau = 1
         print(f'Doing iteration {i+1}/{maxiter}\t Calculating retraction...\t', end='\r')
