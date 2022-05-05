@@ -4,8 +4,8 @@ import jax
 import jax.config
 jax.config.update("jax_enable_x64", True)
 
-from src.matrix import TuckerMatrix
-from src.tucker import Tucker
+from tucker_riemopt.src.matrix import TuckerMatrix
+from tucker_riemopt.src.tucker import Tucker
 import numpy as np
 import jax.numpy as jnp
 
@@ -54,7 +54,7 @@ def compute_gradient_projection(T, f, g=None, dg_dS=None, dg_dU=None):
     return Tucker(group_cores(dS, T.core), [jnp.concatenate([T.factors[i], dU[i]], axis=1) for i in range(T.ndim)])
 
 
-def optimize(f, X0, maxiter=10):
+def optimize(f, X0, maxiter=10, verbose=False):
     """
     Input
         f: function to maximize
@@ -83,15 +83,21 @@ def optimize(f, X0, maxiter=10):
     dg_dU = jax.grad(g, argnums=2)
     
     for i in range(maxiter):
-        print(f'Doing iteration {i+1}/{maxiter}\t Calculating gradient...\t', end='\r')
+        if verbose:
+            print(f'Doing iteration {i+1}/{maxiter}\t Calculating gradient...\t', end='\r')
         G = compute_gradient_projection(X, f, g, dg_dS, dg_dU)
-        print(f'Doing itaration {i+1}/{maxiter}\t Calculating tau...\t\t', end='\r')
-        tau = 1
-        print(f'Doing iteration {i+1}/{maxiter}\t Calculating retraction...\t', end='\r')
+
+        if verbose:
+            print(f'Doing itaration {i+1}/{maxiter}\t Calculating tau...\t\t', end='\r')
+        tau = 0.0001
+        
+        if verbose:
+            print(f'Doing iteration {i+1}/{maxiter}\t Calculating retraction...\t', end='\r')
         X = X + tau * G
         X = X.round(max_rank=max_rank) # retraction
         
         errs.append(f(X))
-        print(f'Done iteration {i+1}/{maxiter}!\t Error: {errs[-1]}' + ' ' * 50, end='\r')
-        
+        if verbose:
+            print(f'Done iteration {i+1}/{maxiter}!\t Error: {errs[-1]}' + ' ' * 50, end='\n')
+
     return X, errs
